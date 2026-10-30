@@ -15,11 +15,8 @@ import time
 from pathlib import Path
 import numpy as np
 
-# Database Configuration
-DB_HOST = "localhost"
-DB_NAME = "statathon" 
-DB_USER = "postgres" 
-DB_PASSWORD = "digimini"
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "Data_Injection"))
+from db_config import get_db_connection as _base_db_connection
 
 # Performance Configuration
 BATCH_SIZE = 25000  # Optimized batch size for better memory management
@@ -34,19 +31,20 @@ MICRODATA_CSV_DIR = '../Data_Injection/hces_microdata_csvs'
 
 def get_db_connection():
     """Get optimized database connection with performance settings"""
-    conn = psycopg2.connect(
-        host=DB_HOST,
-        database=DB_NAME,
-        user=DB_USER,
-        password=DB_PASSWORD
-    )
-    # Set session-level optimizations (only the ones that can be changed)
+    conn = _base_db_connection()
+    # Best-effort session tweaks; hosted Postgres (Supabase) may reject some of these.
     with conn.cursor() as cur:
-        cur.execute("SET synchronous_commit TO off")
-        cur.execute("SET work_mem TO '256MB'")
-        cur.execute("SET maintenance_work_mem TO '256MB'")
-        cur.execute("SET temp_buffers TO '64MB'")
-        cur.execute("SET effective_cache_size TO '1GB'")
+        for statement in (
+            "SET synchronous_commit TO off",
+            "SET work_mem TO '256MB'",
+            "SET maintenance_work_mem TO '256MB'",
+            "SET temp_buffers TO '64MB'",
+            "SET effective_cache_size TO '1GB'",
+        ):
+            try:
+                cur.execute(statement)
+            except Exception:
+                conn.rollback()
     return conn
 
 def ultra_fast_copy_insert(cur, data_records, table_name):

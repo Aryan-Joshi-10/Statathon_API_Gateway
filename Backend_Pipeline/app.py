@@ -1,11 +1,15 @@
 from flask import Flask, render_template, request, jsonify, session, redirect, url_for
 import os
+import sys
 import subprocess
 import json
 import threading
 import time
 from werkzeug.utils import secure_filename
 import shutil
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "Data_Injection"))
+from db_config import get_db_connection
 
 app = Flask(__name__)
 app.secret_key = 'your-secret-key-here'  # Change this in production
@@ -41,14 +45,14 @@ def run_pipeline_step(step_name, command, working_dir):
     try:
         pipeline_status['current_step'] = step_name
         pipeline_status['logs'].append(f"Starting {step_name}...")
-        
-        # Run the command
+
+        use_shell = isinstance(command, str)
         result = subprocess.run(
             command,
             cwd=working_dir,
             capture_output=True,
             text=True,
-            shell=True
+            shell=use_shell
         )
         
         # Log both stdout and stderr for debugging
@@ -110,26 +114,38 @@ def run_pipeline(pdf_filename, csv_filename):
         pipeline_status['progress'] = 20
         pipeline_status['logs'].append("Files copied to Data_Injection directory")
         
-        # Step 2: Run PDF to metadata conversion
+        py = sys.executable
+        data_dir = os.path.join('..', 'Data_Injection')
+
         pipeline_status['progress'] = 30
-        if not run_pipeline_step("PDF to Metadata", "python 01_pdf_to_metadata.py", "../Data_Injection"):
+        if not run_pipeline_step(
+            "PDF to Metadata",
+            [py, "01_pdf_to_metadata.py", pdf_filename],
+            data_dir,
+        ):
             pipeline_status['error'] = "PDF to metadata conversion failed"
             return
         
         pipeline_status['progress'] = 50
         
-        # Step 3: Ingest metadata
         pipeline_status['progress'] = 70
-        if not run_pipeline_step("Metadata Ingestion", "python 02_ingest_metadata.py", "../Data_Injection"):
+        if not run_pipeline_step(
+            "Metadata Ingestion",
+            [py, "02_ingest_metadata.py"],
+            data_dir,
+        ):
             pipeline_status['error'] = "Metadata ingestion failed"
             return
         
         pipeline_status['progress'] = 85
         
-        # Step 4: Ingest microdata (Ultra-Fast)
         pipeline_status['progress'] = 95
-        if not run_pipeline_step("Ultra-Fast Microdata Ingestion", "python ultra_fast_microdata.py", "."):
-            pipeline_status['error'] = "Ultra-fast microdata ingestion failed"
+        if not run_pipeline_step(
+            "Microdata Ingestion",
+            [py, "03_ingest_microdata.py"],
+            data_dir,
+        ):
+            pipeline_status['error'] = "Microdata ingestion failed"
             return
         
         pipeline_status['progress'] = 100
@@ -188,15 +204,7 @@ def test_microdata():
 def test_database():
     """Test database connection and required tables"""
     try:
-        import psycopg2
-        
-        # Test connection
-        conn = psycopg2.connect(
-            host="localhost",
-            database="statathon",
-            user="postgres",
-            password="Suraj@#6708"
-        )
+        conn = get_db_connection()
         
         cur = conn.cursor()
         
@@ -345,4 +353,4 @@ def make_api_call():
 
 if __name__ == '__main__':
     ensure_upload_folder()
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    app.run(debug=True, host='0.0.0.0', port=5001)

@@ -1,4 +1,11 @@
 import os
+from pathlib import Path
+
+try:
+    from dotenv import load_dotenv
+    load_dotenv(Path(__file__).resolve().parents[1] / ".env")
+except ImportError:
+    pass
 
 class Config:
     """Configuration class for the Data Injection Pipeline"""
@@ -12,11 +19,13 @@ class Config:
     MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16MB max file size
     ALLOWED_EXTENSIONS = {'pdf', 'csv'}
     
-    # Database Configuration (for the existing scripts)
-    DB_HOST = os.environ.get('DB_HOST', 'localhost')
-    DB_NAME = os.environ.get('DB_NAME', 'statathon')
+    DATABASE_URL = os.environ.get('DATABASE_URL')
+    DB_HOST = os.environ.get('DB_HOST')
+    DB_NAME = os.environ.get('DB_NAME', 'postgres')
     DB_USER = os.environ.get('DB_USER', 'postgres')
-    DB_PASSWORD = os.environ.get('DB_PASSWORD', 'Suraj@#6708')
+    DB_PASSWORD = os.environ.get('DB_PASSWORD')
+    DB_PORT = os.environ.get('DB_PORT', '5432')
+    DB_SSLMODE = os.environ.get('DB_SSLMODE', 'require')
     
     # Pipeline Configuration
     DATA_INJECTION_DIR = os.path.join('..', 'Data_Injection')
@@ -53,8 +62,12 @@ class Config:
     
     @classmethod
     def get_db_connection_string(cls):
-        """Get database connection string for the existing scripts"""
-        return f"host={cls.DB_HOST} dbname={cls.DB_NAME} user={cls.DB_USER} password={cls.DB_PASSWORD}"
+        if cls.DATABASE_URL:
+            return cls.DATABASE_URL
+        return (
+            f"host={cls.DB_HOST} dbname={cls.DB_NAME} user={cls.DB_USER} "
+            f"password={cls.DB_PASSWORD} port={cls.DB_PORT} sslmode={cls.DB_SSLMODE}"
+        )
     
     @classmethod
     def validate_config(cls):
